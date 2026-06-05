@@ -1,0 +1,146 @@
+/* 刺激提示に関する設定 */
+.stimulus-box {
+  padding: 0px;
+  margin-bottom: 20px;
+  margin-top: 40px;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+.stimulus-box1 p {
+  margin: 0;
+}
+
+#playBtn {
+  height: 40px;
+  width: 70px;      /* ←横の長さ */
+  padding: 0px 0;   /* ←高さも少し出す */
+  font-size: 16px;
+}
+
+#decideBtn {
+  height: 40px;
+  width: 70px;      /* ←横の長さ */
+  padding: 0px 0;   /* ←高さも少し出す */
+  font-size: 16px;
+}
+
+/* =========================
+   人物像選択（共通）
+========================= */
+.bio-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px 22px;
+  margin-top: 70px;
+}
+
+.bio-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.bio-option input[type="radio"] {
+  transform: scale(1.7);
+  margin: 0;
+  vertical-align: middle;
+}
+
+.bio-option input[type="checkbox"] {
+  transform: scale(1.8);
+  margin: 0;
+  vertical-align: middle;
+}
+
+.bio-option span {
+  display: inline-block;
+  line-height: 1.4;
+}
+
+/* 無効時の見た目 */
+.bio-option input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 次へボタン */
+#jspsych-survey-html-form-next {
+  display: block;
+  margin: 20px auto 70px auto;
+  padding: 10px 24px;
+}
+
+/* 親ごと強制的に広げる */
+#jspsych-content {
+  max-width: 1900px;
+}
+
+/* =========================
+   SD法（本体）
+========================= */
+
+/* 1行（1質問） */
+.sd-row {
+  display: flex;
+  align-items: flex-start;
+  width : 100%;
+  margin-bottom: 35px;
+}
+
+/* 左右ラベル */
+.sd-label {
+  width: 180px;
+  font-size: 20px;
+  font-weight: bold;
+
+  position: relative;
+  top: -55px;   /* ←これで上に持ち上げる */
+  margin-top: 100px;
+}
+
+.sd-label.left {
+  text-align: right;
+  margin-right: -35px;
+}
+
+.sd-label.right {
+  text-align: left;
+  margin-left: -35px;
+}
+
+/* スケール（ラジオボタン列） */
+.sd-scale {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 0px;
+}
+
+/* 各選択肢（ラジオ＋ラベル） */
+.sd-option {
+  flex: 1;                        
+  min-width: 97px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 100px;
+}
+
+/* ラジオボタン */
+.sd-option input[type="radio"] {
+  transform: scale(1.7);
+  margin-bottom: -5px;
+}
+
+/* テキスト */
+.sd-text {
+  text-align: center;
+  line-height: 1.3;
+  word-break: keep-all;  /* ←日本語改行防止 */
+}
