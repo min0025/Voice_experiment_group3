@@ -1,9 +1,16 @@
 // スクリーニング用刺激
+// 3音を1ファイルに連結した6通りの順列音声と、quiet の正解位置を対応づけます。
 const scr_stimuli = [
-  {name: "quiet", file: "./assets/screening/tone_quiet.wav"},
-  {name: "normal", file: "./assets/screening/tone_normal.wav"},
-  {name: "anti", file: "./assets/screening/tone_antiphase.wav"}
+  { order: ["quiet", "normal", "anti"], quiet_position: 1, file: new URL("./assets/screening/screening_quiet_normal_anti.wav", window.location.href).href },
+  { order: ["quiet", "anti", "normal"], quiet_position: 1, file: new URL("./assets/screening/screening_quiet_anti_normal.wav", window.location.href).href },
+  { order: ["normal", "quiet", "anti"], quiet_position: 2, file: new URL("./assets/screening/screening_normal_quiet_anti.wav", window.location.href).href },
+  { order: ["normal", "anti", "quiet"], quiet_position: 3, file: new URL("./assets/screening/screening_normal_anti_quiet.wav", window.location.href).href },
+  { order: ["anti", "quiet", "normal"], quiet_position: 2, file: new URL("./assets/screening/screening_anti_quiet_normal.wav", window.location.href).href },
+  { order: ["anti", "normal", "quiet"], quiet_position: 3, file: new URL("./assets/screening/screening_anti_normal_quiet.wav", window.location.href).href },
 ];
+
+// スクリーニング連結音声のプリロード結果を保持します。
+let preloaded_scr_stimuli = null;
 
 // 参加者が本試行前に音量を合わせるための画面です。
 const volume_adjustment = {
@@ -11,11 +18,12 @@ const volume_adjustment = {
   stimulus: `
     <h1>音量の調節</h1><br>
     <p style="font-size: 20px">ここでは、ご自身で音量調節を行ってもらいます。再生ボタンを押すと音声が流れます。</p>
-    <p style="font-size: 20px"><U><b>「イヤホン」または「ヘッドホン」は装着したままで音声を聞き、ちょうどよいと思う音量に調節してください。</b></U></p>
+    <p style="font-size: 20px"><U><b>「イヤホン」または「ヘッドホン」は装着したままで音声を聞き、可能であれば「有線」のものをご使用ください。</b></U></p>
+    <p style="font-size: 20px"><U><b>また、パソコンのサウンド環境は「モノラル」ではなく「ステレオ」に設定してください。</b></U></p>
     <p style="font-size: 20px; margin-bottom: 35px"><u>音声は何回でも再生可能です</u>。</p>
     <div style="text-align: center; margin-bottom: 30px;">
       <button type="button" id="volumePlayBtn">再生</button>
-      <audio id="volumeAudio" src="./assets/practice/VOICEACTRESS100_026_006.wav"></audio>
+      <audio id="volumeAudio" src="./assets/practice/VOICEACTRESS100_026_054.wav"></audio>
     </div>
     <p style="font-size: 18px;">音量調節が終わったら「次へ」を押してください。</p>
   `,
@@ -27,16 +35,45 @@ const volume_adjustment = {
     const nextBtn =
       document.querySelector("#jspsych-html-button-response-button-0 button") ||
       document.querySelector("#jspsych-html-button-response-button-0");
+    const volumeAudioFile = new URL(
+      "./assets/practice/VOICEACTRESS100_026_054.wav",
+      window.location.href
+    ).href;
 
     if (!playBtn || !audio || !nextBtn) return;
 
     nextBtn.disabled = true;
+    playBtn.disabled = true;
+    playBtn.textContent = "読み込み中...";
+
+    fetch(volumeAudioFile, { cache: "force-cache" })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to preload ${volumeAudioFile}: ${response.status}`);
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        audio.src = URL.createObjectURL(blob);
+        audio.load();
+        playBtn.disabled = false;
+        playBtn.textContent = "再生";
+      })
+      .catch((error) => {
+        console.error("Volume adjustment preload failed:", volumeAudioFile, error);
+        playBtn.disabled = false;
+        playBtn.textContent = "再生";
+      });
 
     playBtn.addEventListener("click", function(){
       nextBtn.disabled = true;
       playBtn.disabled = true;
       audio.currentTime = 0;
-      audio.play();
+      audio.play().catch((error) => {
+        console.error("Volume adjustment playback failed:", volumeAudioFile, error);
+        playBtn.disabled = false;
+        playBtn.textContent = "再生";
+      });
     });
 
     audio.addEventListener("play", function(){
@@ -66,12 +103,14 @@ const screening_trial = {
   // 画面表示内容
   stimulus: `
     <h1>実験前の確認</h1><br>
-    <p style="font-size: 20px"><B><U>必ず「ヘッドホン」か「イヤホン」を装着してください</U></B></p>
+    <p style="font-size: 20px"><B><U>必ず「ヘッドホン」または「イヤホン」を装着し、可能であれば「有線」のものをご使用ください</U></B></p>
+    <p style="font-size: 20px"><B><U>また、パソコンのサウンド環境は「モノラル」ではなく「ステレオ」に設定してください</U></B></p>
     <p style="font-size: 20px">再生ボタンを押すと、3つの音が順番に再生されます</p>
     <p style="font-size: 20px">3つの音の中で<b><u>最も小さく聞こえた音</u></b>について、<U><b>その音が何番目に流れたか</b></U>を選択してください</p>
     <p style="font-size: 20px; margin-bottom: 40px">この試行は6回行われます。</p>
     <hr>
     <div id="controls"></div>
+    <audio id="screeningAudio" preload="auto"></audio>
     <br>
     <button id="nextBtn" disabled>次へ</button>
   `,
@@ -83,52 +122,75 @@ const screening_trial = {
     let current = 0; // 現在の試行番号
     let answers = []; // 回答記録
     let corrects = []; // 正解記録
+    const sequence_order = jsPsych.randomization.shuffle([...scr_stimuli]); // 6通りの順列を1回ずつ使う順番
 
     const container = document.getElementById("controls"); // 何回目の音声再生か
+    const screeningAudio = document.getElementById("screeningAudio"); // スクリーニング再生に使うaudio要素
     const nextBtn = document.getElementById("nextBtn"); // 次へボタンの要素
 
-    // 音を順番に再生
-    // 3つの音を指定順で連続再生します。
-    function playSequence(order, callback){
-      let i = 0;
-
-      // 現在位置の音を1つ再生して次の音へ進めます。
-      function playNext(){
-        if(i >= order.length){
-          callback();
-          return;
-        }
-
-        const audio = new Audio(order[i].file);
-        audio.preload = "auto";
-
-        audio.play().catch((error) => {
-          console.error("Screening audio playback failed:", order[i].file, error);
-          alert("音声の再生に失敗しました。通信状況やファイル配置を確認して、もう一度お試しください。");
-          playBtn.disabled = false;
-          playBtn.textContent = "再生";
-        });
-
-        // 再生終了後に次へ
-        audio.onended = function(){
-          setTimeout(() => {
-            i++;
-            playNext();
-          }, 500);
-        };
+    // 連結済みスクリーニング音声を先に取得して再生ラグを減らします。
+    async function preloadScreeningFiles(){
+      if (preloaded_scr_stimuli) {
+        return preloaded_scr_stimuli;
       }
 
-      playNext(); // 次の再生へ
+      preloaded_scr_stimuli = await Promise.all(
+        scr_stimuli.map(async (stim) => {
+          const response = await fetch(stim.file, { cache: "force-cache" });
+          if (!response.ok) {
+            throw new Error(`Failed to preload ${stim.file}: ${response.status}`);
+          }
+
+          const blob = await response.blob();
+          return {
+            ...stim,
+            loaded_file: URL.createObjectURL(blob),
+          };
+        })
+      );
+
+      return preloaded_scr_stimuli;
+    }
+
+    // 単一の連結音声ファイルを1回再生します。
+    function playScreeningFile(file){
+      return new Promise((resolve, reject) => {
+        const cleanup = () => {
+          screeningAudio.removeEventListener("ended", handleEnded);
+          screeningAudio.removeEventListener("error", handleError);
+        };
+
+        const handleEnded = () => {
+          cleanup();
+          resolve();
+        };
+
+        const handleError = () => {
+          cleanup();
+          reject(new Error(`Failed to play ${file}`));
+        };
+
+        screeningAudio.pause();
+        screeningAudio.currentTime = 0;
+        screeningAudio.src = file;
+        screeningAudio.load();
+        screeningAudio.addEventListener("ended", handleEnded);
+        screeningAudio.addEventListener("error", handleError);
+
+        screeningAudio.play().catch((error) => {
+          cleanup();
+          reject(error);
+        });
+      });
     }
 
     // UIの描画
     // 各試行の画面を描画して正解位置も記録します。
     function render(){
-      // 毎回シャッフルして順番を変える
-      let order = jsPsych.randomization.shuffle([...scr_stimuli]);
-      // 正解（quietの位置）を記録
-      const correct = order.findIndex(s => s.name === "quiet") + 1;
-      corrects[current] = correct;
+      // 連結済み6パターンを1試行につき1回ずつ使います。
+      const sequence = sequence_order[current];
+      // quiet の正解位置を記録します。
+      corrects[current] = sequence.quiet_position;
 
       // HTML描画
       container.innerHTML = `
@@ -161,11 +223,17 @@ const screening_trial = {
         decideBtn.disabled = true;
         radios.forEach(r => r.disabled = true);
 
-        playSequence(order, function(){
-          // 再生後
-          playBtn.textContent = "再生済み";
-          radios.forEach(r => r.disabled = false);
-        });
+        playScreeningFile(sequence.loaded_file || sequence.file)
+          .then(() => {
+            playBtn.textContent = "再生済み";
+            radios.forEach(r => r.disabled = false);
+          })
+          .catch((error) => {
+            console.error("Screening audio playback failed:", sequence.file, error);
+            alert("音声の再生に失敗しました。通信状況やファイル配置を確認して、もう一度お試しください。");
+            playBtn.disabled = false;
+            playBtn.textContent = "再生";
+          });
       };
 
       // =========================
@@ -204,8 +272,26 @@ const screening_trial = {
       }
     };
   }
+    container.innerHTML = `<p style="font-size: 20px; margin-top: 30px;">音声を読み込んでいます。しばらくお待ちください。</p>`;
 
-    render();
+    preloadScreeningFiles()
+      .then((loadedStimuli) => {
+        for (let i = 0; i < sequence_order.length; i++) {
+          const matched = loadedStimuli.find(
+            (stim) => stim.file === sequence_order[i].file
+          );
+          if (matched) {
+            sequence_order[i] = matched;
+          }
+        }
+
+        render();
+      })
+      .catch((error) => {
+        console.error("Screening preload failed:", error);
+        container.innerHTML =
+          `<p style="font-size: 20px; margin-top: 30px;">音声の読み込みに失敗しました。ページを再読み込みして、もう一度お試しください。</p>`;
+      });
 
     // =========================
     // 試行正解数の計算結果
@@ -238,8 +324,9 @@ const screening_retry_notice = {
   type: jsPsychHtmlButtonResponse,
   stimulus: `
     <h1>装着状況の再確認</h1><br>
-    <p style="font-size: 20px"><b><u>「イヤホン」または「ヘッドホン」を装着した上で聴取してますか？</u></b></p>
-    <p style="font-size: 20px">必ず装着した上で参加してください。</p>
+    <p style="font-size: 20px"><b><u>「イヤホン」または「ヘッドホン」を装着した上で聴取していますか？ 可能であれば「有線」のものをご使用ください。</u></b></p>
+    <p style="font-size: 20px"><b><u>パソコンのサウンド環境が「モノラル」ではなく「ステレオ」になっていることもご確認ください。</u></b></p>
+    <p style="font-size: 20px">必ず設定を確認した上で参加してください。</p>
     <p style="font-size: 20px">最初からやり直します。</p>
   `,
   choices: ["最初から"]

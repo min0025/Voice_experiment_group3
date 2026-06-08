@@ -17,9 +17,9 @@ const speaker_gender_map = [
 // =========================
 // 本試行・練習試行の刺激一覧
 // =========================
-// 本試行51〜75番音声にファイルパスと話者メタデータを付与します。
+// 本試行76〜100番音声にファイルパスと話者メタデータを付与します。
 const all_stimuli = Array.from({ length: 25 }, (_, i) => {
-  const speakerNumber = i + 51;
+  const speakerNumber = i + 1;
   const num = String(speakerNumber).padStart(3, "0");
   return {
     id: speakerNumber - 1,
@@ -30,7 +30,7 @@ const all_stimuli = Array.from({ length: 25 }, (_, i) => {
   };
 });
 
-// 今回の本試行では定義済みの51〜75番音声を提示します。
+// 今回の本試行では定義済みの76〜100番音声を提示します。
 const assigned_stimuli = jsPsych.randomization.shuffle(all_stimuli);
 
 // 練習用に使う2音声のメタデータです。
@@ -40,14 +40,14 @@ const practice_stimuli = [
     stim_num: null,
     speaker_id: "practice_1",
     speaker_gender: null,
-    file: "./assets/practice/VOICEACTRESS100_026_023.wav",
+    file: "./assets/practice/VOICEACTRESS100_026_053.wav",
   },
   {
     id: "practice_2",
     stim_num: null,
     speaker_id: "practice_2",
     speaker_gender: null,
-    file: "./assets/practice/VOICEACTRESS100_026_090.wav",
+    file: "./assets/practice/VOICEACTRESS100_026_080.wav",
   },
 ];
 
@@ -85,6 +85,28 @@ const likert_scale = [
   "<span style='font-size: 17px;'><p>当てはまる</p></span>",
   "<span style='font-size: 17px;'><p>とても<br>当てはまる</br></p></span>",
 ];
+
+// 音声ファイルのプリロード結果をキャッシュします。
+const preloaded_audio_map = new Map();
+
+// 再生前に音声を取得して、再生開始時のラグを減らします。
+async function preloadAudioFile(file) {
+  if (preloaded_audio_map.has(file)) {
+    return preloaded_audio_map.get(file);
+  }
+
+  const preloadPromise = fetch(file, { cache: "force-cache" })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Failed to preload ${file}: ${response.status}`);
+      }
+      return response.blob();
+    })
+    .then((blob) => URL.createObjectURL(blob));
+
+  preloaded_audio_map.set(file, preloadPromise);
+  return preloadPromise;
+}
 
 // =========================
 // 各音声に対する評価画面の生成
@@ -169,6 +191,7 @@ function createVoiceTrials(stimuli, options = {}) {
         const audio = document.getElementById("audioElem");
         const playBtn = document.getElementById("playBtn");
         const submitBtn = document.querySelector("#jspsych-survey-html-form-next");
+        const nextStim = stimuli[index + 1];
 
         let audioFinished = false;
         let html = "";
@@ -229,12 +252,38 @@ function createVoiceTrials(stimuli, options = {}) {
 
         submitBtn.disabled = true;
         form.querySelectorAll("input").forEach(el => el.disabled = true);
+        playBtn.disabled = true;
+        playBtn.textContent = "読み込み中...";
+
+        preloadAudioFile(stim.file)
+          .then((loadedFile) => {
+            audio.src = loadedFile;
+            audio.load();
+            playBtn.disabled = false;
+            playBtn.textContent = "再生";
+          })
+          .catch((error) => {
+            console.error("Voice trial preload failed:", stim.file, error);
+            playBtn.textContent = "再生";
+            playBtn.disabled = false;
+          });
+
+        if (nextStim) {
+          preloadAudioFile(nextStim.file).catch((error) => {
+            console.error("Next voice trial preload failed:", nextStim.file, error);
+          });
+        }
 
         playBtn.addEventListener("click", () => {
           playBtn.disabled = true;
           playBtn.textContent = "再生中...";
           audio.currentTime = 0;
-          audio.play();
+          audio.play().catch((error) => {
+            console.error("Voice trial playback failed:", stim.file, error);
+            playBtn.disabled = false;
+            playBtn.textContent = "再生";
+            alert("音声の再生に失敗しました。通信状況を確認して、もう一度お試しください。");
+          });
         });
 
         audio.addEventListener("ended", () => {
